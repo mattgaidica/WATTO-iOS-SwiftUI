@@ -83,6 +83,8 @@
 			dependencies = (
 			);
 			name = WATTO;
+			packageProductDependencies = (
+			);
 			productName = WATTO;
 			productReference = FB8E3D8029E4CE69002A9A8E /* WATTO.app */;
 			productType = "com.apple.product-type.application";
@@ -111,6 +113,8 @@
 				Base,
 			);
 			mainGroup = FB8E3D7729E4CE69002A9A8E;
+			packageReferences = (
+			);
 			productRefGroup = FB8E3D8129E4CE69002A9A8E /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -270,6 +274,8 @@
 				DEVELOPMENT_TEAM = WBU4CZ6AZJ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "I need BLE";
+				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -299,6 +305,8 @@
 				DEVELOPMENT_TEAM = WBU4CZ6AZJ;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "I need BLE";
+				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
