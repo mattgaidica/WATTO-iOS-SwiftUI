@@ -3,24 +3,25 @@ import Charts
 
 struct ContentView: View {
     @ObservedObject private var bleManager = BLEManager()
+    @State private var relativeState: Bool = false
     let plotHeight:CGFloat = 175.0
     
     var body: some View {
         let bins = bleManager.powerScale(start: 30, end: 4000.0, points: 51, exponent: 3)
         
         VStack {
-            Section {
-                Toggle("Scan for Watto peripheral?", isOn: $bleManager.doScan)
-            }.padding(EdgeInsets(top: 10, leading: 60, bottom: 20, trailing: 60))
+            HStack {
+                Toggle("Watto", isOn: $bleManager.doScan).font(.title).fontWeight(.heavy)
+            }.padding(EdgeInsets(top: 20, leading: 125, bottom: 10, trailing: 125))
             
             Section(header: Text("Current (µA)").fontWeight(.bold)) {
-                LinePlot(bleManager: bleManager, data: bleManager.currentData)
+                LinePlot(bleManager: bleManager, data: bleManager.currentData.map {$0 - bleManager.currentOffset})
                     .frame(height: plotHeight)
             }
             
             Section() {
                 VStack {
-                    HistPlot(data: bleManager.computeHistogram(data: bleManager.currentData, bins: bins), bins: bins)
+                    HistPlot(data: bleManager.computeHistogram(data: bleManager.currentData.map {$0 - bleManager.currentOffset}, bins: bins), bins: bins)
                         .frame(height: plotHeight - 100)
                         .padding(EdgeInsets(top: 20, leading: 0, bottom: 20, trailing: 0))
                     CustomXAxisView(bins: bins).fixedSize(horizontal: false, vertical: true)
@@ -32,17 +33,17 @@ struct ContentView: View {
             HStack {
                 VStack {
                     Text("Avg (µA)").font(.footnote)
-                    Text("\(String(format: "%1.0f", bleManager.meanCurrent))").font(.title)
+                    Text("\(String(format: "%1.0f", bleManager.meanCurrent - bleManager.currentOffset))").font(.title)
                 }
                 Spacer()
                 VStack {
                     Text("Min (µA)").font(.footnote)
-                    Text("\(String(format: "%1.0f", bleManager.minCurrent))").font(.title)
+                    Text("\(String(format: "%1.0f", bleManager.minCurrent - bleManager.currentOffset))").font(.title)
                 }
                 Spacer()
                 VStack {
                     Text("Max (µA)").font(.footnote)
-                    Text("\(String(format: "%1.0f", bleManager.maxCurrent))").font(.title)
+                    Text("\(String(format: "%1.0f", bleManager.maxCurrent - bleManager.currentOffset))").font(.title)
                 }
                 Spacer()
                 VStack {
@@ -52,6 +53,13 @@ struct ContentView: View {
             }.padding()
             
             Spacer()
+            
+            Section {
+                Toggle("Use Relative Current (median = \(String(format: "%1.0f", bleManager.currentOffset))µA)", isOn: $relativeState)
+                    .onChange(of: relativeState) { newValue in
+                    bleManager.relativeCurrentChange(to: newValue)
+                }
+            }.padding()
             
             Section {
                 ZStack {

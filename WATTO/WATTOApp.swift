@@ -31,6 +31,7 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     @Published var meanPower: Float = 0
     @Published var batteryLife: String = ""
     @Published var doCollection: Bool = true
+    @Published var currentOffset: Float = 0
     @Published var selectedBatterySize: Int = 40
     let batterySizes = [20, 40, 100, 220, 1000]
     
@@ -189,28 +190,35 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
             h = (totalSeconds % 86400) / 3600 // Remaining hours
             m = (totalSeconds % 3600) / 60 // Remaining minutes
         }
-        return "\(d) days, \(h) hours, \(m) minutes"
+        let dStr = d == 1 ? "\(d) day, " : "\(d) days, "
+        let hStr = h == 1 ? "\(h) hour, " : "\(h) hours, "
+        let mStr = h == 1 ? "\(m) minute" : "\(m) minutes"
+        return dStr + hStr + mStr
     }
     
-    func logspace(start: Float, end: Float, points: Int) -> [Float] {
-        var startLog = start
-        if start > 0 {
-            startLog = log10(start)
+    func relativeCurrentChange(to: Bool) {
+        if to {
+            currentOffset = median(of: currentData) ?? 0
+        } else {
+            currentOffset = 0
         }
-        let endLog = log10(end)
-        let step = (endLog - startLog) / Float(points - 1)
-        
-        var logScaledValues: [Float] = []
-        
-        for index in 0...(points - 1) {
-            let exponent = startLog + step * Float(index)
-            let value = pow(10, exponent)
-            logScaledValues.append(value)
-        }
-        
-        return logScaledValues
     }
     
+    func median(of array: [Float]) -> Float? {
+        guard !array.isEmpty else { return nil }
+        
+        let sortedArray = array.sorted()
+        let middleIndex = sortedArray.count / 2
+        
+        if sortedArray.count % 2 == 0 {
+            // Even number of elements
+            return (sortedArray[middleIndex - 1] + sortedArray[middleIndex]) / 2
+        } else {
+            // Odd number of elements
+            return sortedArray[middleIndex]
+        }
+    }
+
     func powerScale(start: Float, end: Float, points: Int, exponent: Float) -> [Float] {
         let step = 1 / Float(points - 1)
         
