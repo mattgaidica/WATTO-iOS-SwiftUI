@@ -3,28 +3,34 @@ import Charts
 
 struct ContentView: View {
     @ObservedObject private var bleManager = BLEManager()
-    @State private var relativeState: Bool = false
     let plotHeight:CGFloat = 175.0
     
     var body: some View {
-        let bins = bleManager.powerScale(start: 30, end: 4000.0, points: 51, exponent: 3)
-        
         VStack {
             HStack {
                 Toggle("Watto", isOn: $bleManager.doScan).font(.title).fontWeight(.heavy)
             }.padding(EdgeInsets(top: 20, leading: 125, bottom: 10, trailing: 125))
             
             Section(header: Text("Current (µA)").fontWeight(.bold)) {
-                LinePlot(bleManager: bleManager, data: bleManager.currentData.map {$0 - bleManager.currentOffset})
-                    .frame(height: plotHeight)
+                ZStack {
+                    LinePlot(bleManager: bleManager, data: bleManager.getCurrentData())
+                        .frame(height: plotHeight)
+                    HStack {
+                        Text(String(format: bleManager.plotWindowTime < 60 ? "←%1.1f sec" : "←%1.1f min", bleManager.plotWindowTime < 60 ? bleManager.plotWindowTime : bleManager.plotWindowTime / 60))
+                            .font(.caption)
+                            .offset(y: 15 + plotHeight/2) // Adjust the vertical offset
+                            .opacity(0.5)
+                        Spacer()
+                    }
+                }
             }
             
             Section() {
                 VStack {
-                    HistPlot(data: bleManager.computeHistogram(data: bleManager.currentData.map {$0 - bleManager.currentOffset}, bins: bins), bins: bins)
+                    HistPlot(data: bleManager.computeHistogram(), bins: bleManager.bins)
                         .frame(height: plotHeight - 100)
                         .padding(EdgeInsets(top: 20, leading: 0, bottom: 20, trailing: 0))
-                    CustomXAxisView(bins: bins).fixedSize(horizontal: false, vertical: true)
+                             CustomXAxisView(bins: bleManager.bins).fixedSize(horizontal: false, vertical: true)
                 }
             }
             
@@ -33,12 +39,12 @@ struct ContentView: View {
             HStack {
                 VStack {
                     Text("Min (µA)").font(.footnote)
-                    Text("\(String(format: "%1.0f", bleManager.minCurrent - bleManager.currentOffset))").font(.title)
+                    Text("\(String(format: "%1.0f", bleManager.minCurrent))").font(.title)
                 }
                 Spacer()
                 VStack {
                     Text("Max (µA)").font(.footnote)
-                    Text("\(String(format: "%1.0f", bleManager.maxCurrent - bleManager.currentOffset))").font(.title)
+                    Text("\(String(format: "%1.0f", bleManager.maxCurrent))").font(.title)
                 }
                 Spacer()
 //                VStack {
@@ -47,19 +53,33 @@ struct ContentView: View {
 //                }
                 VStack {
                     Text("Avg (µA)").font(.footnote)
-                    Text("\(String(format: "%1.0f", bleManager.meanCurrent - bleManager.currentOffset))").font(.title)
+                    Text("\(String(format: "%1.0f", bleManager.meanCurrent))").font(.title)
                 }
                 Spacer()
                 VStack {
                     Text("Now (µA)").font(.footnote)
-                    Text("\(String(format: "%1.0f", bleManager.nowCurrent - bleManager.currentOffset))").font(.title).fontWeight(.heavy)
+                    Text("\(String(format: "%1.0f", bleManager.nowCurrent))").font(.title).fontWeight(.heavy)
                 }
             }.padding()
             
             Section {
-                Toggle("Use Relative Current (median = \(String(format: "%1.0f", bleManager.currentOffset))µA)", isOn: $relativeState)
-                    .onChange(of: relativeState) { newValue in
-                    bleManager.relativeCurrentChange(to: newValue)
+                HStack {
+                    Text("Offset")
+                        .font(.headline)
+                    Spacer()
+                    ZStack {
+                        Slider(value: $bleManager.currentOffset, in: 0...1000, onEditingChanged: { editing in
+                            if !editing {
+                                bleManager.setBins(doReset: true)
+                            }
+                        })
+                        HStack {
+                            Spacer()
+                            Text("\(bleManager.currentOffset, specifier: "%1.0f")µA")
+                                .font(.caption)
+                                .offset(y: 10) // Adjust the vertical offset
+                        }
+                    }
                 }
             }.padding()
             
@@ -108,7 +128,7 @@ struct HistPlot: View {
             HStack(alignment: .center, spacing: 0) {
                 ForEach(data.indices, id: \.self) { index in
                     VStack(spacing: 0) {
-                        RoundedRectangle(cornerRadius: 3)
+                        RoundedRectangle(cornerRadius: 1)
                             .fill(Color.blue)
                             .frame(width: barWidth, height: allZeros ? 0 : max(CGFloat(data[index]) * geometry.size.height / maxValue, 0))
                     }
@@ -155,6 +175,7 @@ struct CustomXAxisView: View {
 struct LinePlot: View {
     @ObservedObject var bleManager: BLEManager
     let data: [Float]
+    
     var body: some View {
         Chart {
             ForEach(data.indices, id: \.self) { index in
@@ -166,6 +187,7 @@ struct LinePlot: View {
                 }
             }
             .foregroundStyle(.red)
+            .interpolationMethod(.catmullRom)
         }
         .chartYAxis(.automatic)
         .chartXAxis(.hidden)
@@ -175,23 +197,24 @@ struct LinePlot: View {
     }
 }
 
+
 extension LinePlot: AXChartDescriptorRepresentable {
     func makeChartDescriptor() -> AXChartDescriptor {
         let ymin = 0
         let ymax = max(100, data.max() ?? 0)
-        
+
         let xAxis = AXNumericDataAxisDescriptor(
             title: "Index",
             range: Double(0)...Double(data.count - 1),
             gridlinePositions: []
         ) { value in "\(Int(value))" }
-        
+
         let yAxis = AXNumericDataAxisDescriptor(
             title: "Value",
             range: Double(ymin)...Double(ymax),
             gridlinePositions: []
         ) { value in "\(value)" }
-        
+
         let lineSeries = AXDataSeriesDescriptor(
             name: "Data series",
             isContinuous: true,
@@ -199,7 +222,7 @@ extension LinePlot: AXChartDescriptorRepresentable {
                 .init(x: Double($0.offset), y: Double($0.element))
             }
         )
-        
+
         return AXChartDescriptor(
             title: "Data",
             summary: nil,
@@ -227,21 +250,6 @@ struct NonEditableTextEditor: UIViewRepresentable {
     func updateUIView(_ uiView: UITextView, context: Context) {
         uiView.text = text
     }
-}
-
-func simpleMovingAverage(data: [Float], windowSize: Int) -> [Float] {
-    var smoothedData: [Float] = []
-    
-    for i in 0..<data.count {
-        let start = max(0, i - windowSize + 1)
-        let end = i + 1
-        let window = data[start..<end]
-        let sum = window.reduce(0, +)
-        let average = sum / Float(window.count)
-        smoothedData.append(average)
-    }
-    
-    return smoothedData
 }
 
 struct ContentView_Previews: PreviewProvider {

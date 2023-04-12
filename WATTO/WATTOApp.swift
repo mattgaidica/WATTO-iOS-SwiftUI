@@ -21,7 +21,7 @@ struct WATTOApp: App {
 
 class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     @Published var voltageData: [Float] = Array(repeating: 0.0, count: 1000)
-    @Published var currentData: [Float] = Array(repeating: 0.0, count: 1000)
+    private var currentData: [Float] = Array(repeating: 0.0, count: 1000)
     @Published var powerData: [Float] = Array(repeating: 0.0, count: 1000)
     @Published var doScan: Bool = false
     @Published var debugText: String = ">> Hello, Watto"
@@ -31,9 +31,11 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     @Published var nowCurrent: Float = 0
     @Published var meanPower: Float = 0
     @Published var batteryLife: String = ""
-    @Published var currentOffset: Float = 0
+    @Published var currentOffset: Double = 0
+    @Published var bins: [Float] = Array(repeating: 0.0, count: 51)
     @Published var selectedBatterySize: Int = 40
     let batterySizes = [20, 40, 100, 220, 1000]
+    @Published var plotWindowTime: Float = 0.0
     
     private var centralManager: CBCentralManager!
     private var peripheral: CBPeripheral?
@@ -46,11 +48,42 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     private var collectionMod: Int = 0
     private var notifyCount: Int = 0
     private let modTable: [Int] = [1, 10, 100]
+    private var minAutoRangeBins:Float = Float.nan
+    private var maxAutoRangeBins:Float = Float.nan
+    private var dataElapsed: Int = 0
+    private var elapsedSecCounter: Float = 0.0
     
     override init() {
         super.init()
         centralManager = CBCentralManager(delegate: self, queue: nil)
         self.batteryLife = formattedBatteryLife(batterySize: self.selectedBatterySize, microAmps: self.meanCurrent)
+        self.setBins(doReset: true)
+    }
+    
+    func setBins(doReset: Bool = false) {
+        if doReset {
+            minAutoRangeBins = Float.nan
+            maxAutoRangeBins = Float.nan
+            bins = Array(repeating: 0.0, count: bins.count)
+        }
+        
+        // autoranging procedure
+        let currentData = getCurrentData()
+        let nonZeroData = currentData.filter { $0 != 0 }
+        if let minNonZeroValue = nonZeroData.min() {
+            if minNonZeroValue < minAutoRangeBins || minAutoRangeBins.isNaN {
+                minAutoRangeBins = minNonZeroValue
+            }
+        }
+        if let maxNonZeroValue = nonZeroData.max() {
+            if maxNonZeroValue > maxAutoRangeBins || maxAutoRangeBins.isNaN {
+                maxAutoRangeBins = maxNonZeroValue
+            }
+        }
+        
+        if !minAutoRangeBins.isNaN && !maxAutoRangeBins.isNaN {
+            bins = powerScale(start: minAutoRangeBins - minAutoRangeBins * 0.05, end: maxAutoRangeBins + maxAutoRangeBins * 0.05, points: bins.count, exponent: 3)
+        }
     }
     
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
@@ -58,7 +91,7 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
             timer1Hz = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
                 if self.doScan && self.peripheral == nil {
                     self.centralManager.scanForPeripherals(withServices: [self.serviceUUID], options: nil)
-                    self.dprint("Scanning for Watto peripheral")
+                    self.dprint("Scanning for Watto")
                 }
                 if !self.doScan {
                     self.centralManager.stopScan()
@@ -68,12 +101,19 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
                     }
                 }
                 if let _ = self.peripheral {
-                    self.meanCurrent = self.currentData.reduce(0, +) / Float(self.currentData.count)
-                    self.minCurrent = self.currentData.min() ?? 0
-                    self.maxCurrent = self.currentData.max() ?? 0
-                    self.nowCurrent = self.currentData.last ?? 0
-                    self.meanPower = self.powerData.reduce(0, +) / Float(self.powerData.count) / 1000
+                    let currentData = self.getCurrentData()
+                    self.meanCurrent = currentData.reduce(0, +) / Float(currentData.count)
+                    self.minCurrent = currentData.min() ?? 0
+                    self.maxCurrent = currentData.max() ?? 0
+                    self.nowCurrent = currentData.last ?? 0
+//                    self.meanPower = self.powerData.reduce(0, +) / Float(self.powerData.count) / 1000
                     self.batteryLife = self.formattedBatteryLife(batterySize: self.selectedBatterySize, microAmps: self.meanCurrent)
+                    self.setBins()
+                    // take a good sample
+                    self.elapsedSecCounter += 1.0
+                    if self.dataElapsed > 0 {
+                        self.plotWindowTime = self.elapsedSecCounter * Float(self.currentData.count) / Float(self.dataElapsed)
+                    }
                 }
             }
             
@@ -91,6 +131,8 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         peripheral.discoverServices([serviceUUID])
+        setBins(doReset: true)
+        dprint("Connected to \(peripheral.name ?? "")")
     }
     
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
@@ -138,12 +180,11 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
             DispatchQueue.main.async {
                 switch characteristic.uuid {
                 case self.voltageCharacteristicUUID:
-                    self.updateData(data: &self.voltageData, newData: floatArray)
+                    self.voltageData = self.updateData(data: self.voltageData, newData: floatArray)
                 case self.currentCharacteristicUUID:
-                    self.notifyCount += 1
-                    self.updateData(data: &self.currentData, newData: floatArray)
+                    self.currentData = self.updateData(data: self.currentData, newData: floatArray, doCount: true)
                 case self.powerCharacteristicUUID:
-                    self.updateData(data: &self.powerData, newData: floatArray)
+                    self.powerData = self.updateData(data: self.powerData, newData: floatArray)
                 default:
                     break
                 }
@@ -151,14 +192,44 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
         }
     }
     
-    private func updateData(data: inout [Float], newData: [Float]) {
-        if notifyCount % modTable[collectionMod] == 0 {
-            let overflow = data.count + newData.count - currentData.count
-            if overflow > 0 {
-                data.removeFirst(overflow)
-            }
-            data.append(contentsOf: newData)
+    private func updateData(data: [Float], newData: [Float], doCount: Bool = false) -> [Float] {
+        var updatedData = data
+        
+        if doCount {
+            self.notifyCount += 1
         }
+        
+        if notifyCount % modTable[collectionMod] == 0 {
+            let overflow = updatedData.count + newData.count - data.count
+            if overflow > 0 {
+                updatedData.removeFirst(overflow)
+            }
+            updatedData.append(contentsOf: newData)
+            if doCount {
+                dataElapsed += newData.count
+            }
+        }
+        
+        return updatedData
+    }
+    
+    func getCurrentData() -> [Float] {
+        let newData = currentData.map { $0 - Float(currentOffset) }
+        return newData
+    }
+    
+    func movingAverage(data: [Float]) -> [Float] {
+        var smoothedData: [Float] = []
+        let windowSize = Int(Float(currentData.count) * 0.05)
+        for i in 0..<data.count {
+            let start = max(0, i - windowSize + 1)
+            let end = i + 1
+            let window = data[start..<end]
+            let sum = window.reduce(0, +)
+            let average = sum / Float(window.count)
+            smoothedData.append(average)
+        }
+        return smoothedData
     }
     
     func dprint(_ addText: String) {
@@ -166,8 +237,9 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
         debugText = ">> \(addText)\n\(debugText)"
     }
     
-    func computeHistogram(data: [Float], bins: [Float]) -> [Float] {
+    func computeHistogram() -> [Float] {
         let nBins = bins.count
+        let data = getCurrentData()
         var histogram = [Float](repeating: 0.0, count: nBins - 1)
         
         for value in data {
@@ -201,19 +273,17 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
         return dStr + hStr + mStr
     }
     
-    func relativeCurrentChange(to: Bool) {
-        if to {
-            currentOffset = median(of: currentData) ?? 0
-        } else {
-            currentOffset = 0
-        }
+    func currentOffset(to: Double) {
+        currentOffset = to
     }
     
     func setCollectionMod() {
         collectionMod += 1
-        if collectionMod > modTable.count {
+        if collectionMod >= modTable.count {
             collectionMod = 0
         }
+        self.elapsedSecCounter = 0.0
+        self.dataElapsed = 0
         dprint("(\(collectionMod+1)/\(modTable.count)) Taking every \(modTable[collectionMod])th sample")
     }
     
