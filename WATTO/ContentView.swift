@@ -32,11 +32,6 @@ struct ContentView: View {
             
             HStack {
                 VStack {
-                    Text("Avg (µA)").font(.footnote)
-                    Text("\(String(format: "%1.0f", bleManager.meanCurrent - bleManager.currentOffset))").font(.title)
-                }
-                Spacer()
-                VStack {
                     Text("Min (µA)").font(.footnote)
                     Text("\(String(format: "%1.0f", bleManager.minCurrent - bleManager.currentOffset))").font(.title)
                 }
@@ -46,13 +41,20 @@ struct ContentView: View {
                     Text("\(String(format: "%1.0f", bleManager.maxCurrent - bleManager.currentOffset))").font(.title)
                 }
                 Spacer()
+//                VStack {
+//                    Text("Power (mW)").font(.footnote)
+//                    Text("\(String(format: "%1.1f", bleManager.meanPower))").font(.title)
+//                }
                 VStack {
-                    Text("Power (mW)").font(.footnote)
-                    Text("\(String(format: "%1.1f", bleManager.meanPower))").font(.title)
+                    Text("Avg (µA)").font(.footnote)
+                    Text("\(String(format: "%1.0f", bleManager.meanCurrent - bleManager.currentOffset))").font(.title)
+                }
+                Spacer()
+                VStack {
+                    Text("Now (µA)").font(.footnote)
+                    Text("\(String(format: "%1.0f", bleManager.nowCurrent - bleManager.currentOffset))").font(.title).fontWeight(.heavy)
                 }
             }.padding()
-            
-            Spacer()
             
             Section {
                 Toggle("Use Relative Current (median = \(String(format: "%1.0f", bleManager.currentOffset))µA)", isOn: $relativeState)
@@ -139,12 +141,14 @@ struct CustomXAxisView: View {
         }
     }
     
-    private func customFormatter(value: Float) -> String {
-        let numberFormatter = NumberFormatter()
-        numberFormatter.numberStyle = .decimal
-        numberFormatter.maximumFractionDigits = value >= 100 ? 0 : 1
-        
-        return numberFormatter.string(from: NSNumber(value: value)) ?? ""
+    func customFormatter(value: Float) -> String {
+        if value < 1000 {
+            return String(format: "%1.0f", value) // Format the number as it is with one decimal place
+        } else {
+            let roundedValue = (value / 1000).rounded(.toNearestOrEven) * 1000 // Round the number to the nearest hundred
+            let valueInK = roundedValue / 1000 // Convert the number to thousands
+            return String(format: "%.1fk", valueInK) // Format the number with one decimal place and append "k"
+        }
     }
 }
 
@@ -166,7 +170,7 @@ struct LinePlot: View {
         .chartYAxis(.automatic)
         .chartXAxis(.hidden)
         .onTapGesture {
-            bleManager.doCollection.toggle()
+            bleManager.setCollectionMod()
         }
     }
 }

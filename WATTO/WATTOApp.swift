@@ -28,9 +28,9 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     @Published var meanCurrent: Float = 0
     @Published var minCurrent: Float = 0
     @Published var maxCurrent: Float = 0
+    @Published var nowCurrent: Float = 0
     @Published var meanPower: Float = 0
     @Published var batteryLife: String = ""
-    @Published var doCollection: Bool = true
     @Published var currentOffset: Float = 0
     @Published var selectedBatterySize: Int = 40
     let batterySizes = [20, 40, 100, 220, 1000]
@@ -43,6 +43,9 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     private let powerCharacteristicUUID = CBUUID(string: "A003")
     
     private var timer1Hz: Timer?
+    private var collectionMod: Int = 0
+    private var notifyCount: Int = 0
+    private let modTable: [Int] = [1, 10, 100]
     
     override init() {
         super.init()
@@ -68,6 +71,7 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
                     self.meanCurrent = self.currentData.reduce(0, +) / Float(self.currentData.count)
                     self.minCurrent = self.currentData.min() ?? 0
                     self.maxCurrent = self.currentData.max() ?? 0
+                    self.nowCurrent = self.currentData.last ?? 0
                     self.meanPower = self.powerData.reduce(0, +) / Float(self.powerData.count) / 1000
                     self.batteryLife = self.formattedBatteryLife(batterySize: self.selectedBatterySize, microAmps: self.meanCurrent)
                 }
@@ -122,41 +126,42 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     }
     
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        if doCollection {
-            if let data = characteristic.value {
-                var floatArray: [Float] = []
-                let count = data.count / MemoryLayout<Float>.size
-                floatArray = [Float](repeating: 0.0, count: count)
-                data.withUnsafeBytes { bufferPointer in
-                    let floatBufferPointer = bufferPointer.bindMemory(to: Float.self)
-                    floatArray = Array(floatBufferPointer)
-                }
-                
-                DispatchQueue.main.async {
-                    switch characteristic.uuid {
-                    case self.voltageCharacteristicUUID:
-                        self.updateData(data: &self.voltageData, newData: floatArray)
-                    case self.currentCharacteristicUUID:
-                        self.updateData(data: &self.currentData, newData: floatArray)
-                    case self.powerCharacteristicUUID:
-                        self.updateData(data: &self.powerData, newData: floatArray)
-                    default:
-                        break
-                    }
+        if let data = characteristic.value {
+            var floatArray: [Float] = []
+            let count = data.count / MemoryLayout<Float>.size
+            floatArray = [Float](repeating: 0.0, count: count)
+            data.withUnsafeBytes { bufferPointer in
+                let floatBufferPointer = bufferPointer.bindMemory(to: Float.self)
+                floatArray = Array(floatBufferPointer)
+            }
+            
+            DispatchQueue.main.async {
+                switch characteristic.uuid {
+                case self.voltageCharacteristicUUID:
+                    self.updateData(data: &self.voltageData, newData: floatArray)
+                case self.currentCharacteristicUUID:
+                    self.notifyCount += 1
+                    self.updateData(data: &self.currentData, newData: floatArray)
+                case self.powerCharacteristicUUID:
+                    self.updateData(data: &self.powerData, newData: floatArray)
+                default:
+                    break
                 }
             }
         }
     }
     
     private func updateData(data: inout [Float], newData: [Float]) {
-        let overflow = data.count + newData.count - currentData.count
-        if overflow > 0 {
-            data.removeFirst(overflow)
+        if notifyCount % modTable[collectionMod] == 0 {
+            let overflow = data.count + newData.count - currentData.count
+            if overflow > 0 {
+                data.removeFirst(overflow)
+            }
+            data.append(contentsOf: newData)
         }
-        data.append(contentsOf: newData)
     }
     
-    private func dprint(_ addText: String) {
+    func dprint(_ addText: String) {
         print(addText)
         debugText = ">> \(addText)\n\(debugText)"
     }
@@ -202,6 +207,14 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
         } else {
             currentOffset = 0
         }
+    }
+    
+    func setCollectionMod() {
+        collectionMod += 1
+        if collectionMod > modTable.count {
+            collectionMod = 0
+        }
+        dprint("(\(collectionMod+1)/\(modTable.count)) Taking every \(modTable[collectionMod])th sample")
     }
     
     func median(of array: [Float]) -> Float? {
