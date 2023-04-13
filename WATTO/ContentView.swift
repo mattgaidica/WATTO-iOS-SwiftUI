@@ -177,6 +177,13 @@ struct LinePlot: View {
     let data: [Float]
     
     var body: some View {
+        let minY = Double(data.min() ?? 0) * 0.95 // scale to -5% of min value
+        let maxY = Double(data.max() ?? 0) * 1.05 // scale to +5% of max value
+        let numberOfValues = 5
+        
+        let stepSize = (maxY - minY) / Double(numberOfValues - 1)
+        let yMarkValues = stride(from: minY, through: maxY, by: max(stepSize, .ulpOfOne)).map{ $0 }
+        
         Chart {
             ForEach(data.indices, id: \.self) { index in
                 Plot {
@@ -189,14 +196,15 @@ struct LinePlot: View {
             .foregroundStyle(.red)
             .interpolationMethod(.catmullRom)
         }
-        .chartYAxis(.automatic)
+        .chartYAxis {
+            AxisMarks(values: yMarkValues)
+        }
         .chartXAxis(.hidden)
         .onTapGesture {
             bleManager.setCollectionMod()
         }
     }
 }
-
 
 extension LinePlot: AXChartDescriptorRepresentable {
     func makeChartDescriptor() -> AXChartDescriptor {
