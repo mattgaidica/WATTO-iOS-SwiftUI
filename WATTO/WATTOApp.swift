@@ -36,6 +36,7 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     @Published var selectedBatterySize: Int = 40
     let batterySizes = [20, 40, 100, 220, 1000]
     @Published var plotWindowTime: Float = 0.0
+    @Published var modString: String = ""
     
     private var centralManager: CBCentralManager!
     private var peripheral: CBPeripheral?
@@ -58,6 +59,7 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
         centralManager = CBCentralManager(delegate: self, queue: nil)
         self.batteryLife = formattedBatteryLife(batterySize: self.selectedBatterySize, microAmps: self.meanCurrent)
         self.setBins(doReset: true)
+        self.setCollectionMod(doInit: true)
     }
     
     func setBins(doReset: Bool = false) {
@@ -91,7 +93,6 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
             timer1Hz = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
                 if self.doScan && self.peripheral == nil {
                     self.centralManager.scanForPeripherals(withServices: [self.serviceUUID], options: nil)
-                    self.dprint("Scanning for Watto")
                 }
                 if !self.doScan {
                     self.centralManager.stopScan()
@@ -277,14 +278,16 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
         currentOffset = to
     }
     
-    func setCollectionMod() {
-        collectionMod += 1
+    func setCollectionMod(doInit: Bool = false) {
+        if !doInit {
+            collectionMod += 1
+        }
         if collectionMod >= modTable.count {
             collectionMod = 0
         }
         self.elapsedSecCounter = 0.0
         self.dataElapsed = 0
-        dprint("(\(collectionMod+1)/\(modTable.count)) Taking every \(modTable[collectionMod])th sample")
+        modString = "every \(modTable[collectionMod])th sample"
     }
     
     func median(of array: [Float]) -> Float? {

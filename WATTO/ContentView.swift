@@ -8,7 +8,11 @@ struct ContentView: View {
     var body: some View {
         VStack {
             HStack {
-                Toggle("Watto", isOn: $bleManager.doScan).font(.title).fontWeight(.heavy)
+                Toggle("Watto", isOn: $bleManager.doScan).font(.title).fontWeight(.heavy).onChange(of: bleManager.doScan) { newValue in
+                    if newValue {
+                        bleManager.dprint("Scanning for Watto")
+                    }
+                }
             }.padding(EdgeInsets(top: 20, leading: 125, bottom: 10, trailing: 125))
             
             Section(header: Text("Current (µA)").fontWeight(.bold)) {
@@ -16,7 +20,7 @@ struct ContentView: View {
                     LinePlot(bleManager: bleManager, data: bleManager.getCurrentData())
                         .frame(height: plotHeight)
                     HStack {
-                        Text(String(format: bleManager.plotWindowTime < 60 ? "←%1.1f sec" : "←%1.1f min", bleManager.plotWindowTime < 60 ? bleManager.plotWindowTime : bleManager.plotWindowTime / 60))
+                        Text(String(format: bleManager.plotWindowTime < 60 ? "←%1.1f sec" : "←%1.1f min", bleManager.plotWindowTime < 60 ? bleManager.plotWindowTime : bleManager.plotWindowTime / 60) + " (\(bleManager.modString))")
                             .font(.caption)
                             .offset(y: 15 + plotHeight/2) // Adjust the vertical offset
                             .opacity(0.5)
@@ -177,8 +181,8 @@ struct LinePlot: View {
     let data: [Float]
     
     var body: some View {
-        let minY = Double(data.min() ?? 0) * 0.95 // scale to -5% of min value
-        let maxY = Double(data.max() ?? 0) * 1.05 // scale to +5% of max value
+        let minY = Double(data.min() ?? 0) * 0.8 // scale to -5% of min value
+        let maxY = Double(data.max() ?? 0) * 1.2 // scale to +5% of max value
         let numberOfValues = 5
         
         let stepSize = (maxY - minY) / Double(numberOfValues - 1)
