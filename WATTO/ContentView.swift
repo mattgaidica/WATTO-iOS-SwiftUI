@@ -72,7 +72,7 @@ struct ContentView: View {
                         .font(.headline)
                     Spacer()
                     ZStack {
-                        Slider(value: $bleManager.currentOffset, in: 0...1000, onEditingChanged: { editing in
+                        Slider(value: $bleManager.currentOffset, in: 0...3000, onEditingChanged: { editing in
                             if !editing {
                                 bleManager.setBins(doReset: true)
                             }
@@ -187,13 +187,14 @@ struct LinePlot: View {
         
         let stepSize = (maxY - minY) / Double(numberOfValues - 1)
         let yMarkValues = stride(from: minY, through: maxY, by: max(stepSize, .ulpOfOne)).map{ $0 }
+        let filtData = bleManager.splineFilter(data: data, windowSize: 10)
         
         Chart {
             ForEach(data.indices, id: \.self) { index in
                 Plot {
                     LineMark(
                         x: .value("x", index),
-                        y: .value("y", Double(data[index]))
+                        y: .value("y", Double(filtData[index]))
                     )
                 }
             }

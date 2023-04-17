@@ -287,7 +287,25 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
         }
         self.elapsedSecCounter = 0.0
         self.dataElapsed = 0
-        modString = "every \(modTable[collectionMod])th sample"
+        modString = "every \(modTable[collectionMod])th packet"
+    }
+    
+    func splineFilter(data: [Float], windowSize: Int) -> [Float] {
+        let halfWindowSize = windowSize / 2
+        var smoothedData: [Float] = []
+        
+        for i in 0..<data.count {
+            let lowerBound = max(i - halfWindowSize, 0)
+            let upperBound = min(i + halfWindowSize + 1, data.count)
+            
+            let window = Array(data[lowerBound..<upperBound])
+            let windowSum = window.reduce(0.0, +)
+            let windowAverage = windowSum / Float(window.count)
+            
+            smoothedData.append(windowAverage)
+        }
+        
+        return smoothedData
     }
     
     func median(of array: [Float]) -> Float? {
