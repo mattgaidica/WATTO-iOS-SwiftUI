@@ -187,14 +187,14 @@ struct LinePlot: View {
         
         let stepSize = (maxY - minY) / Double(numberOfValues - 1)
         let yMarkValues = stride(from: minY, through: maxY, by: max(stepSize, .ulpOfOne)).map{ $0 }
-        let filtData = bleManager.splineFilter(data: data, windowSize: 10)
+//        let filtData = bleManager.splineFilter(data: data, windowSize: 10)
         
         Chart {
             ForEach(data.indices, id: \.self) { index in
                 Plot {
                     LineMark(
                         x: .value("x", index),
-                        y: .value("y", Double(filtData[index]))
+                        y: .value("y", Double(data[index]))
                     )
                 }
             }
